@@ -7,8 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "audit": "npm audit --audit-level=high"
   },
+  "author": "Kuba Opoczka (KubaOpoczka)",
+  "license": "MIT",
+  "repository": "https://github.com/SmellyBricc/second-order",
+  "homepage": "https://smellybricc.github.io/second-order/",
   "dependencies": {
     "react": "^19.1.1",
     "react-dom": "^19.1.1"

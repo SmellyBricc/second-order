@@ -40,6 +40,10 @@ npm run build
 
 Production Lighthouse: **97 performance · 100 accessibility · 100 best practices · 100 SEO**.
 
+## Security
+
+Second Order is a static, client-only model: it has no accounts, backend, analytics, remote scripts, or network API. Shareable URL state is parsed through bounded numeric and enum allowlists before simulation. Production builds enforce a restrictive Content Security Policy, disable public source maps, and run tests, dependency auditing, and CodeQL in CI. See [SECURITY.md](./SECURITY.md) for reporting.
+
 ## Architecture
 
 `src/model.ts` is a pure simulation package. `src/scenarios.ts` owns presets, URL state, and rule-based explanations. `src/simulation.worker.ts` runs the full model off the main thread. `src/App.tsx` coordinates requests by ID so stale worker results cannot overwrite a newer decision.
@@ -51,3 +55,7 @@ The relationships are illustrative, not predictive. That limitation is part of t
 ## Portfolio talking point
 
 The main product judgment was preserving trade-offs while making them legible. A decision can raise trust and team load simultaneously; the interface lets a reviewer trace that tension through the model instead of turning it into a simplistic green score.
+
+## Authorship
+
+Original concept, design, and engineering by **Kuba Opoczka (KubaOpoczka)**. © 2026. The MIT license requires this copyright notice to remain with substantial copies.

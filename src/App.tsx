@@ -236,7 +236,7 @@ export function App() {
           <span aria-hidden="true">Ⅱ</span>
           <div>
             <strong>Second Order</strong>
-            <small>Counterfactual strategy laboratory</small>
+            <small>Counterfactual strategy laboratory · KubaOpoczka</small>
           </div>
         </div>
         <p>
