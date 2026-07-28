@@ -173,7 +173,7 @@ header > p span {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 32px;
+  gap: 22px;
   padding: 28px 24px 24px;
   border-right: 1px solid var(--carbon);
   background: var(--yellow);
@@ -197,7 +197,7 @@ h1 {
   max-width: 10ch;
   margin: 0;
   font-family: "Newsreader", serif;
-  font-size: clamp(3rem, 5.3vw, 5.8rem);
+  font-size: 3.85rem;
   font-weight: 600;
   line-height: 0.86;
   letter-spacing: -0.04em;
@@ -209,6 +209,56 @@ h1 {
   margin: 22px 0 0;
   font-size: 0.78rem;
   line-height: 1.55;
+}
+
+.scenario-presets {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.scenario-presets legend {
+  margin-bottom: 9px;
+  padding: 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.58rem;
+}
+
+.scenario-presets > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-top: 1px solid var(--carbon);
+  border-left: 1px solid var(--carbon);
+}
+
+.scenario-presets button {
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-right: 1px solid var(--carbon);
+  border-bottom: 1px solid var(--carbon);
+  color: var(--carbon);
+  background: transparent;
+  font-size: 0.65rem;
+  cursor: pointer;
+  transition:
+    color var(--quick) var(--decisive),
+    background var(--quick) var(--decisive);
+}
+
+.scenario-presets button:hover,
+.scenario-presets button.active {
+  color: var(--white);
+  background: var(--violet);
+}
+
+.scenario-presets p {
+  min-height: 2.5em;
+  margin: 9px 0 0;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.51rem;
+  line-height: 1.45;
 }
 
 .levers {
@@ -282,11 +332,17 @@ h1 {
   opacity: 0.72;
 }
 
+.share-button,
 .reset-button {
   color: var(--carbon);
   background: transparent;
   text-decoration: underline;
   text-underline-offset: 4px;
+}
+
+.share-button:hover,
+.reset-button:hover {
+  color: var(--violet);
 }
 
 .causal-stage {
@@ -305,7 +361,7 @@ h2 {
   max-width: 22ch;
   margin: 0;
   font-family: "Newsreader", serif;
-  font-size: clamp(1.8rem, 3.4vw, 3.8rem);
+  font-size: 3rem;
   font-weight: 600;
   line-height: 0.95;
   letter-spacing: -0.035em;
@@ -361,12 +417,29 @@ h2 {
   stroke-width: 1.4;
   stroke-dasharray: 5 5;
   vector-effect: non-scaling-stroke;
+  transition:
+    stroke var(--standard) var(--decisive),
+    stroke-width var(--standard) var(--decisive),
+    opacity var(--standard) var(--decisive);
+}
+
+.causal-map path:not(.is-relevant) {
+  opacity: 0.38;
+}
+
+.causal-map path.is-relevant {
+  stroke: var(--violet);
+  stroke-width: 2.5;
 }
 
 .causal-map.is-running path {
   stroke: var(--oxblood);
   stroke-dashoffset: -20;
   animation: flow 700ms var(--decisive) infinite;
+}
+
+.causal-map.is-running path.is-relevant {
+  stroke-width: 3.5;
 }
 
 .cause-node,
@@ -382,6 +455,36 @@ h2 {
     color var(--standard) var(--decisive),
     background var(--standard) var(--decisive),
     transform var(--standard) var(--decisive);
+}
+
+.metric-node {
+  color: var(--carbon);
+  text-align: left;
+  cursor: pointer;
+}
+
+.metric-node:hover {
+  border-color: var(--violet);
+  transform: translate(-50%, -50%) scale(1.035);
+}
+
+.metric-node.selected {
+  color: var(--white);
+  border-color: var(--violet);
+  background: var(--violet);
+  transform: translate(-50%, -50%) scale(1.06);
+}
+
+.metric-node.selected .range {
+  background: color-mix(in oklch, var(--white) 20%, transparent);
+}
+
+.metric-node.selected .range-fill {
+  background: var(--yellow);
+}
+
+.metric-node.selected .range-median {
+  background: var(--white);
 }
 
 .cause-node {
@@ -458,6 +561,66 @@ h2 {
   transition: transform var(--standard) var(--decisive);
 }
 
+.explanation-strip {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.75fr) minmax(0, 1.6fr);
+  gap: 28px;
+  margin: 0 0 24px;
+  padding: 22px 24px;
+  color: var(--white);
+  background: var(--carbon);
+}
+
+.explanation-strip > div > span {
+  display: block;
+  color: var(--yellow);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.56rem;
+}
+
+.explanation-strip strong {
+  display: block;
+  margin-top: 8px;
+  font-family: "Newsreader", serif;
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.explanation-strip p {
+  max-width: 48ch;
+  margin: 9px 0 0;
+  color: color-mix(in oklch, var(--white) 76%, transparent);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.explanation-strip ol {
+  margin: 0;
+  padding: 0;
+  counter-reset: driver;
+  list-style: none;
+}
+
+.explanation-strip li {
+  position: relative;
+  min-height: 38px;
+  padding: 8px 0 8px 34px;
+  border-bottom: 1px solid color-mix(in oklch, var(--white) 20%, transparent);
+  color: color-mix(in oklch, var(--white) 88%, transparent);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.55rem;
+  line-height: 1.45;
+  counter-increment: driver;
+}
+
+.explanation-strip li::before {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  color: var(--yellow);
+  content: "0" counter(driver);
+}
+
 .range {
   position: relative;
   height: 14px;
@@ -502,6 +665,25 @@ h2 {
   gap: 16px;
   min-height: 58px;
   border-bottom: 1px solid var(--rule);
+  transition: background var(--standard) var(--decisive);
+}
+
+.forecast-strip article.selected {
+  background: var(--surface);
+}
+
+.forecast-select {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  color: var(--carbon);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.forecast-select:hover h3 {
+  color: var(--violet);
 }
 
 .forecast-strip h3,
@@ -589,6 +771,10 @@ footer button {
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
   }
+
+  h1 {
+    max-width: 13ch;
+  }
 }
 
 @media (max-width: 720px) {
@@ -606,7 +792,11 @@ footer button {
   }
 
   h1 {
-    font-size: clamp(3.7rem, 15vw, 5rem);
+    font-size: 3.7rem;
+  }
+
+  h2 {
+    font-size: 2.6rem;
   }
 
   .levers {
@@ -680,6 +870,12 @@ footer button {
     padding: 12px 0;
   }
 
+  .explanation-strip {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 20px;
+  }
+
   .forecast-strip .range {
     grid-column: 1 / -1;
     grid-row: 2;
@@ -695,6 +891,16 @@ footer button {
 
   footer button {
     margin-top: 12px;
+  }
+}
+
+@media (max-width: 420px) {
+  h1 {
+    font-size: 3.25rem;
+  }
+
+  .scenario-presets > div {
+    grid-template-columns: 1fr;
   }
 }
 

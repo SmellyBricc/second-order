@@ -2,7 +2,7 @@
 
 A counterfactual decision laboratory that treats strategy as a probability distribution, not a confident number.
 
-Change shipping pressure, engineering depth, or price position. Second Order sends the intervention through a causal model in a Web Worker, runs 10,000 Monte Carlo trials, and compares the P10–P90 outcome range against the baseline for adoption, reliability, trust, runway, and team load.
+Choose a strategic position or change shipping pressure, engineering depth, and price. Second Order sends the intervention through a causal model in a Web Worker, runs 10,000 Monte Carlo trials, and compares the P10–P90 outcome range against the baseline for adoption, reliability, trust, runway, and team load.
 
 ![Second Order counterfactual strategy laboratory](./output/playwright/second-order-desktop.png)
 
@@ -14,8 +14,12 @@ Strategy tools often hide assumptions and collapse uncertainty into a score. Sec
 
 - Seeded Monte Carlo simulation with Gaussian uncertainty
 - Explicit causal relationships between operating levers and outcomes
+- Four instant strategic presets plus custom interventions
 - 10,000-trial computation isolated in a Web Worker
+- Main-thread fallback if Web Workers are unavailable
 - Baseline-versus-intervention percentile visualization
+- Selectable outcomes with highlighted causal paths and plain-language driver explanations
+- URL-encoded, copyable scenario state—including the selected causal lens—for reproducible discussions
 - Deterministic runs for reproducible discussion and tests
 - Accessible native controls and live simulation status
 - Responsive causal map with a non-animated reduced-motion mode
@@ -34,11 +38,11 @@ npm test
 npm run build
 ```
 
-Production Lighthouse: **97 performance · 100 accessibility · 100 best practices**.
+Production Lighthouse: **97 performance · 100 accessibility · 100 best practices · 100 SEO**.
 
 ## Architecture
 
-`src/model.ts` is a pure simulation package. `src/simulation.worker.ts` runs the full model off the main thread. `src/App.tsx` coordinates requests by ID so stale worker results cannot overwrite a newer decision.
+`src/model.ts` is a pure simulation package. `src/scenarios.ts` owns presets, URL state, and rule-based explanations. `src/simulation.worker.ts` runs the full model off the main thread. `src/App.tsx` coordinates requests by ID so stale worker results cannot overwrite a newer decision.
 
 ## Modelling note
 
@@ -46,4 +50,4 @@ The relationships are illustrative, not predictive. That limitation is part of t
 
 ## Portfolio talking point
 
-The main product judgment was preserving trade-offs. A decision can raise trust and team load simultaneously; the interface resists turning that tension into a simplistic green score.
+The main product judgment was preserving trade-offs while making them legible. A decision can raise trust and team load simultaneously; the interface lets a reviewer trace that tension through the model instead of turning it into a simplistic green score.

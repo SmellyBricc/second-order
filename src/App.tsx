@@ -7,6 +7,14 @@ import {
   type MetricId,
   type SimulationResult,
 } from "./model";
+import {
+  SCENARIOS,
+  explainMetric,
+  matchingScenario,
+  scenarioSearch,
+  scenarioStateFromSearch,
+  type Scenario,
+} from "./scenarios";
 import type { SimulationRequest } from "./simulation.worker";
 
 const METRICS: Array<{ id: MetricId; label: string; note: string; inverse?: boolean }> = [
@@ -17,13 +25,35 @@ const METRICS: Array<{ id: MetricId; label: string; note: string; inverse?: bool
   { id: "teamLoad", label: "Team load", note: "Sustained delivery strain", inverse: true },
 ];
 
+const NETWORK_PATHS: Array<{
+  coordinates: [number, number, number, number];
+  outcomes: MetricId[];
+}> = [
+  { coordinates: [190, 155, 480, 92], outcomes: ["reliability", "trust"] },
+  { coordinates: [190, 155, 480, 252], outcomes: ["adoption", "trust", "runway"] },
+  { coordinates: [190, 390, 480, 252], outcomes: ["adoption", "trust", "runway"] },
+  { coordinates: [190, 390, 480, 455], outcomes: ["teamLoad", "runway"] },
+  { coordinates: [535, 92, 820, 170], outcomes: ["trust"] },
+  { coordinates: [535, 252, 820, 170], outcomes: ["trust"] },
+  { coordinates: [535, 252, 820, 390], outcomes: ["runway"] },
+  { coordinates: [535, 455, 820, 390], outcomes: ["runway"] },
+];
+
+const INITIAL_STATE = scenarioStateFromSearch(window.location.search);
+
 const percent = (value: number) => `${Math.round(value * 100)}%`;
+
+const sameLevers = (first: Levers, second: Levers) =>
+  Math.abs(first.shippingPressure - second.shippingPressure) < 0.005 &&
+  Math.abs(first.engineeringDepth - second.engineeringDepth) < 0.005 &&
+  Math.abs(first.priceChange - second.priceChange) < 0.005;
 
 const deltaLabel = (current: Distribution, baseline: Distribution, inverse = false) => {
   const raw = (current.p50 - baseline.p50) * (inverse ? -1 : 1);
   const points = Math.round(raw * 100);
   if (points === 0) return "no material change";
-  return `${points > 0 ? "+" : "−"}${Math.abs(points)} pts ${points > 0 ? "better" : "worse"}`;
+  const unit = Math.abs(points) === 1 ? "pt" : "pts";
+  return `${points > 0 ? "+" : "−"}${Math.abs(points)} ${unit} ${points > 0 ? "better" : "worse"}`;
 };
 
 function Range({
@@ -51,39 +81,133 @@ const path = (fromX: number, fromY: number, toX: number, toY: number) =>
   `M ${fromX} ${fromY} C ${(fromX + toX) / 2} ${fromY}, ${(fromX + toX) / 2} ${toY}, ${toX} ${toY}`;
 
 export function App() {
-  const [levers, setLevers] = useState<Levers>(BASELINE);
-  const [baseline, setBaseline] = useState<SimulationResult>(() => simulate(BASELINE, 2500, 2607));
-  const [result, setResult] = useState<SimulationResult>(baseline);
+  const [levers, setLevers] = useState<Levers>(INITIAL_STATE.levers);
+  const [baseline] = useState<SimulationResult>(() => simulate(BASELINE, 10_000, 2607));
+  const [result, setResult] = useState<SimulationResult>(() =>
+    sameLevers(INITIAL_STATE.levers, BASELINE) && INITIAL_STATE.seed === 2607
+      ? baseline
+      : simulate(INITIAL_STATE.levers, 10_000, INITIAL_STATE.seed),
+  );
+  const [simulatedLevers, setSimulatedLevers] = useState<Levers>(INITIAL_STATE.levers);
   const [pending, setPending] = useState(false);
-  const [seed, setSeed] = useState(2607);
+  const [seed, setSeed] = useState(INITIAL_STATE.seed);
+  const [selectedMetric, setSelectedMetric] = useState<MetricId>(INITIAL_STATE.focus);
+  const [shareLabel, setShareLabel] = useState("Copy scenario link");
   const workerRef = useRef<Worker | null>(null);
   const requestRef = useRef(0);
+  const pendingRequestRef = useRef<SimulationRequest | null>(null);
 
   useEffect(() => {
-    const worker = new Worker(new URL("./simulation.worker.ts", import.meta.url), {
-      type: "module",
-    });
-    worker.onmessage = (event: MessageEvent<{ id: number; result: SimulationResult }>) => {
-      if (event.data.id !== requestRef.current) return;
-      setResult(event.data.result);
-      setPending(false);
-    };
-    workerRef.current = worker;
-    return () => worker.terminate();
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker(new URL("./simulation.worker.ts", import.meta.url), {
+        type: "module",
+      });
+      worker.onmessage = (event: MessageEvent<{ id: number; result: SimulationResult }>) => {
+        if (event.data.id !== requestRef.current) return;
+        const completed = pendingRequestRef.current;
+        setResult(event.data.result);
+        if (completed) setSimulatedLevers(completed.levers);
+        pendingRequestRef.current = null;
+        setPending(false);
+      };
+      worker.onerror = () => {
+        const failed = pendingRequestRef.current;
+        if (!failed || failed.id !== requestRef.current) return;
+        setResult(simulate(failed.levers, 10_000, failed.seed));
+        setSimulatedLevers(failed.levers);
+        pendingRequestRef.current = null;
+        setPending(false);
+        workerRef.current = null;
+        worker?.terminate();
+      };
+      workerRef.current = worker;
+    } catch {
+      workerRef.current = null;
+    }
+    return () => worker?.terminate();
   }, []);
 
-  const runSimulation = () => {
+  const runSimulation = (nextLevers = levers, nextSeed = seed) => {
     const id = requestRef.current + 1;
     requestRef.current = id;
+    const request: SimulationRequest = { id, levers: nextLevers, seed: nextSeed };
+    pendingRequestRef.current = request;
     setPending(true);
-    const request: SimulationRequest = { id, levers, seed };
-    workerRef.current?.postMessage(request);
+
+    const url = new URL(window.location.href);
+    url.search = scenarioSearch(nextLevers, nextSeed, selectedMetric);
+    window.history.replaceState({}, "", url);
+
+    if (workerRef.current) {
+      workerRef.current.postMessage(request);
+      return;
+    }
+
+    window.setTimeout(() => {
+      if (request.id !== requestRef.current) return;
+      setResult(simulate(request.levers, 10_000, request.seed));
+      setSimulatedLevers(request.levers);
+      pendingRequestRef.current = null;
+      setPending(false);
+    }, 0);
+  };
+
+  const chooseScenario = (scenario: Scenario) => {
+    const nextLevers = { ...scenario.levers };
+    setLevers(nextLevers);
+    setShareLabel("Copy scenario link");
+    runSimulation(nextLevers, seed);
+  };
+
+  const updateLever = (key: keyof Levers, value: number) => {
+    setLevers((current) => ({ ...current, [key]: value }));
+    setShareLabel("Copy scenario link");
+  };
+
+  const selectMetric = (metric: MetricId) => {
+    setSelectedMetric(metric);
+    const url = new URL(window.location.href);
+    url.search = scenarioSearch(levers, seed, metric);
+    window.history.replaceState({}, "", url);
   };
 
   const reset = () => {
+    requestRef.current += 1;
+    pendingRequestRef.current = null;
+    setPending(false);
     setLevers(BASELINE);
+    setSimulatedLevers(BASELINE);
     setResult(baseline);
     setSeed(2607);
+    setSelectedMetric("trust");
+    setShareLabel("Copy scenario link");
+    window.history.replaceState({}, "", window.location.pathname);
+  };
+
+  const copyScenario = async () => {
+    const url = new URL(window.location.href);
+    url.search = scenarioSearch(levers, seed, selectedMetric);
+    window.history.replaceState({}, "", url);
+
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(url.toString());
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = url.toString();
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        document.body.append(textArea);
+        textArea.select();
+        const copied = document.execCommand("copy");
+        textArea.remove();
+        if (!copied) throw new Error("Copy unavailable");
+      }
+      setShareLabel("Scenario link copied");
+    } catch {
+      setShareLabel("Copy blocked — use the address bar");
+    }
   };
 
   const headline = useMemo(() => {
@@ -96,6 +220,11 @@ export function App() {
       return "Growth arrives with a shorter clock.";
     return "Small decisions still cast long shadows.";
   }, [baseline, result]);
+
+  const activeScenario = useMemo(() => matchingScenario(levers), [levers]);
+  const explanation = useMemo(() => explainMetric(selectedMetric, levers), [levers, selectedMetric]);
+  const selectedDefinition = METRICS.find((metric) => metric.id === selectedMetric) ?? METRICS[0];
+  const isDirty = !sameLevers(levers, simulatedLevers);
 
   return (
     <main>
@@ -127,6 +256,25 @@ export function App() {
             </p>
           </div>
 
+          <fieldset className="scenario-presets">
+            <legend>Starting position</legend>
+            <div>
+              {SCENARIOS.map((scenario) => (
+                <button
+                  key={scenario.id}
+                  type="button"
+                  aria-pressed={activeScenario?.id === scenario.id}
+                  className={activeScenario?.id === scenario.id ? "active" : ""}
+                  title={scenario.thesis}
+                  onClick={() => chooseScenario(scenario)}
+                >
+                  {scenario.name}
+                </button>
+              ))}
+            </div>
+            <p>{activeScenario?.thesis ?? "Custom intervention. Run it to update the model."}</p>
+          </fieldset>
+
           <div className="levers">
             <label>
               <span>
@@ -140,12 +288,7 @@ export function App() {
                 max="1"
                 step="0.01"
                 value={levers.shippingPressure}
-                onChange={(event) =>
-                  setLevers((current) => ({
-                    ...current,
-                    shippingPressure: Number(event.target.value),
-                  }))
-                }
+                onChange={(event) => updateLever("shippingPressure", Number(event.target.value))}
               />
               <small>Low = deliberate · High = urgent</small>
             </label>
@@ -161,12 +304,7 @@ export function App() {
                 max="1"
                 step="0.01"
                 value={levers.engineeringDepth}
-                onChange={(event) =>
-                  setLevers((current) => ({
-                    ...current,
-                    engineeringDepth: Number(event.target.value),
-                  }))
-                }
+                onChange={(event) => updateLever("engineeringDepth", Number(event.target.value))}
               />
               <small>Prototype patch → durable system</small>
             </label>
@@ -182,21 +320,25 @@ export function App() {
                 max="1"
                 step="0.01"
                 value={levers.priceChange}
-                onChange={(event) =>
-                  setLevers((current) => ({
-                    ...current,
-                    priceChange: Number(event.target.value),
-                  }))
-                }
+                onChange={(event) => updateLever("priceChange", Number(event.target.value))}
               />
               <small>Accessible → premium</small>
             </label>
           </div>
 
           <div className="rail-actions">
-            <button className="run-button" onClick={runSimulation} disabled={pending}>
-              <span>{pending ? "Simulating…" : "Simulate 10,000 futures"}</span>
+            <button className="run-button" onClick={() => runSimulation()} disabled={pending}>
+              <span>
+                {pending
+                  ? "Simulating…"
+                  : isDirty
+                    ? "Run changed scenario"
+                    : "Simulate 10,000 futures"}
+              </span>
               <i aria-hidden="true">→</i>
+            </button>
+            <button className="share-button" onClick={() => void copyScenario()}>
+              {shareLabel}
             </button>
             <button className="reset-button" onClick={reset}>
               Reset assumptions
@@ -211,21 +353,24 @@ export function App() {
               <h2 id="map-title">{headline}</h2>
             </div>
             <div className="legend" aria-label="Chart legend">
-              <span><i className="current-key" /> Current range</span>
-              <span><i className="baseline-key" /> Baseline median</span>
+              <span>
+                <i className="current-key" /> Current range
+              </span>
+              <span>
+                <i className="baseline-key" /> Baseline median
+              </span>
             </div>
           </div>
 
           <div className={`causal-map ${pending ? "is-running" : ""}`}>
             <svg viewBox="0 0 1000 560" preserveAspectRatio="none" aria-hidden="true">
-              <path d={path(190, 155, 480, 92)} />
-              <path d={path(190, 155, 480, 252)} />
-              <path d={path(190, 390, 480, 252)} />
-              <path d={path(190, 390, 480, 455)} />
-              <path d={path(535, 92, 820, 170)} />
-              <path d={path(535, 252, 820, 170)} />
-              <path d={path(535, 252, 820, 390)} />
-              <path d={path(535, 455, 820, 390)} />
+              {NETWORK_PATHS.map(({ coordinates, outcomes }, index) => (
+                <path
+                  key={index}
+                  className={outcomes.includes(selectedMetric) ? "is-relevant" : ""}
+                  d={path(...coordinates)}
+                />
+              ))}
             </svg>
 
             <div className="cause-node shipping">
@@ -236,49 +381,92 @@ export function App() {
               <span>Engineering depth</span>
               <strong>{percent(levers.engineeringDepth)}</strong>
             </div>
-            <div className="metric-node reliability">
+            <button
+              type="button"
+              className={`metric-node reliability ${selectedMetric === "reliability" ? "selected" : ""}`}
+              aria-pressed={selectedMetric === "reliability"}
+              onClick={() => selectMetric("reliability")}
+            >
               <span>Reliability</span>
               <strong>{percent(result.metrics.reliability.p50)}</strong>
               <Range
                 distribution={result.metrics.reliability}
                 baseline={baseline.metrics.reliability}
               />
-            </div>
-            <div className="metric-node adoption">
+            </button>
+            <button
+              type="button"
+              className={`metric-node adoption ${selectedMetric === "adoption" ? "selected" : ""}`}
+              aria-pressed={selectedMetric === "adoption"}
+              onClick={() => selectMetric("adoption")}
+            >
               <span>Adoption</span>
               <strong>{percent(result.metrics.adoption.p50)}</strong>
               <Range distribution={result.metrics.adoption} baseline={baseline.metrics.adoption} />
-            </div>
-            <div className="metric-node team">
+            </button>
+            <button
+              type="button"
+              className={`metric-node team ${selectedMetric === "teamLoad" ? "selected" : ""}`}
+              aria-pressed={selectedMetric === "teamLoad"}
+              onClick={() => selectMetric("teamLoad")}
+            >
               <span>Team load</span>
               <strong>{percent(result.metrics.teamLoad.p50)}</strong>
               <Range distribution={result.metrics.teamLoad} baseline={baseline.metrics.teamLoad} />
-            </div>
-            <div className="metric-node trust">
+            </button>
+            <button
+              type="button"
+              className={`metric-node trust ${selectedMetric === "trust" ? "selected" : ""}`}
+              aria-pressed={selectedMetric === "trust"}
+              onClick={() => selectMetric("trust")}
+            >
               <span>Trust</span>
               <strong>{percent(result.metrics.trust.p50)}</strong>
               <Range distribution={result.metrics.trust} baseline={baseline.metrics.trust} />
-            </div>
-            <div className="metric-node runway">
+            </button>
+            <button
+              type="button"
+              className={`metric-node runway ${selectedMetric === "runway" ? "selected" : ""}`}
+              aria-pressed={selectedMetric === "runway"}
+              onClick={() => selectMetric("runway")}
+            >
               <span>Runway</span>
               <strong>{percent(result.metrics.runway.p50)}</strong>
               <Range distribution={result.metrics.runway} baseline={baseline.metrics.runway} />
-            </div>
+            </button>
             <div className="price-orbit" style={{ "--price": levers.priceChange } as CSSProperties}>
               Price {percent(levers.priceChange)}
             </div>
           </div>
+
+          <section className="explanation-strip" aria-live="polite">
+            <div>
+              <span>{selectedDefinition.label}</span>
+              <strong>{explanation.title}</strong>
+              <p>{explanation.summary}</p>
+            </div>
+            <ol>
+              {explanation.drivers.map((driver) => (
+                <li key={driver}>{driver}</li>
+              ))}
+            </ol>
+          </section>
 
           <div className="forecast-strip" aria-label="Simulation outcome distributions">
             {METRICS.map((metric) => {
               const current = result.metrics[metric.id];
               const base = baseline.metrics[metric.id];
               return (
-                <article key={metric.id}>
-                  <div>
+                <article className={selectedMetric === metric.id ? "selected" : ""} key={metric.id}>
+                  <button
+                    type="button"
+                    className="forecast-select"
+                    aria-pressed={selectedMetric === metric.id}
+                    onClick={() => selectMetric(metric.id)}
+                  >
                     <h3>{metric.label}</h3>
                     <p>{metric.note}</p>
-                  </div>
+                  </button>
                   <Range distribution={current} baseline={base} />
                   <strong>{percent(current.p50)}</strong>
                   <small>{deltaLabel(current, base, metric.inverse)}</small>
@@ -295,9 +483,10 @@ export function App() {
               onClick={() => {
                 const nextSeed = seed + 1;
                 setSeed(nextSeed);
+                runSimulation(levers, nextSeed);
               }}
             >
-              Change uncertainty seed
+              Change uncertainty seed and rerun
             </button>
           </footer>
 
